@@ -4,7 +4,7 @@ Rename (French) PDF files based on a date found inside the PDF text. Designed fo
 
 This tool is optimized for French utility invoices (GAZ/ELECTRICITÉ) but remains generic. It:
 - Extracts text from PDFs (1st page only).
-  - Optimized and tested for Sosh, Orange, OVHcloud, TotalEnergies… invoices.
+  - Optimized and tested for Oney, Sosh, Orange, OVHcloud, TotalEnergies… invoices.
 - Finds candidate dates (numeric and French month formats, including abbreviations).
 - Scores candidates with positive/negative context rules.
 - Renames to `YYYY-MM-DD[_GAZ|_ELEC].pdf` with collision-safe suffixes.

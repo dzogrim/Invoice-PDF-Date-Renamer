@@ -107,6 +107,12 @@ MONTH_YEAR_TOKEN_RE = re.compile(
     re.IGNORECASE,
 )
 
+# "au 25 mai 2025" style for Carte(s) b+ statements.
+BPLUS_AU_PATTERN = re.compile(
+    rf"\bau\s+(\d{{1,2}})\s*{MONTH_TOKEN}\s*[\.\-/]?\s*(\d{{2,4}})\b",
+    re.IGNORECASE,
+)
+
 # Positive keywords: boost candidates near invoice-specific labels.
 KEYWORDS = [
     "facture",
@@ -315,6 +321,20 @@ def pick_best(matches: Iterable[Match]) -> Optional[Match]:
     matches.sort(key=lambda m: (score_match(m), m.date), reverse=True)
     return matches[0]
 
+def has_carte_bplus(text: str) -> bool:
+    """Detect Carte(s) b+ statements."""
+    return re.search(r"carte[s]?\s*b\+", text, re.IGNORECASE) is not None
+
+def find_bplus_au_dates(text: str) -> Iterable[Match]:
+    """Extract dates from 'au XX mois YYYY' patterns for Carte b+ statements."""
+    for m in BPLUS_AU_PATTERN.finditer(text):
+        d = int(m.group(1))
+        mo = MONTHS_FR[m.group(2).lower()]
+        y = normalize_year(int(m.group(3)))
+        date_obj = build_date(y, mo, d)
+        if date_obj:
+            yield Match(date_obj, "bplus_au", _context(text, m.start(), m.end()))
+
 
 def safe_target_path(pdf_path: Path, target_date: dt.date, target_dir: Optional[Path]) -> Path:
     """Resolve a collision-safe target name using YYYY-MM-DD."""
@@ -505,12 +525,26 @@ def main(argv: list[str]) -> int:
             rows.append((pdf, None, None, checksum, f"error: {e}"))
             continue
 
+        best = None
+        if has_carte_bplus(text):
+            bplus_matches = [
+                m for m in find_bplus_au_dates(text)
+                if args.min_year <= m.date.year <= args.max_year
+            ]
+            if args.verbose:
+                print(f"- {pdf.name}: Carte b+ detected, found {len(bplus_matches)} 'au' candidates")
+                for m in bplus_matches[:10]:
+                    print(f"  - {m.date.isoformat()} | source={m.source} | {m.context}")
+            if bplus_matches:
+                best = max(bplus_matches, key=lambda m: m.date)
+
         matches = [m for m in find_dates(text, day_first) if args.min_year <= m.date.year <= args.max_year]
         if args.verbose:
             print(f"- {pdf.name}: found {len(matches)} date candidates")
             for m in matches[:10]:
                 print(f"  - {m.date.isoformat()} | score={score_match(m)} | {m.context}")
-        best = pick_best(matches)
+        if not best:
+            best = pick_best(matches)
         if not best:
             rows.append((pdf, None, None, checksum, "no date found"))
             continue
